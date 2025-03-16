@@ -20,10 +20,8 @@ if (fs.existsSync(actionsPath)) {
 if (fs.existsSync(commandsPath)) {
   getAllFilesFromFolder(commandsPath)
     .forEach((file: string) => {
-      console.log('Loading command file:', file);
       const command = require(file).default;
       if (command) {
-        console.log('Command loaded successfully');
         groupbuyComposer.use(command);
       }
     });

@@ -1,47 +1,29 @@
+import axios from "axios";
 import { Scenes, Markup } from "telegraf";
-import { defaultKickstarterActor, apifyClient } from "../../api/apify-client";
 import { KickstarterContext } from '../../types/customContext';
-import { ApifyKickstarterResponse, TransformedKickstarterResponse, ApifyResponse } from '../../types/specificInterfaces';
 import db from '../../db/index';
+import { initProjectAndGroupbuy, replyWithCancelButton } from "../util";
 
 const currentStageName = 'NEW_GROUPBUY_0_LINK';
 const nextStageName = 'NEW_GROUPBUY_1_CONFIRM';
 
+interface ZyteResponse {
+  title: string;
+  creator: string;
+  creatorURL: string;
+  mainImage: string;
+  pledges: Array<{
+    name: string;
+    price: number;
+  }>;
+  until: string;
+}
+
 const scene = new Scenes.BaseScene<KickstarterContext>(currentStageName);
 
 scene.enter(async (ctx: KickstarterContext) => {
-  ctx.session!.groupbuy = {
-    telegramGroupID: ctx.chat!.id.toString(),
-    margin: 10,
-    minPricePerMember: 0,
-    pricePerMember: 999,
-    finalPrice: 0,
-    status: 'pending',
-    messagesID: [],
-    projectID: 0
-  }
-
-  ctx.session!.project = {
-    creator: '',
-    name: '',
-    url: '',
-    hosted: false,
-    allPledges: [],
-    selectedPledge: {
-      name: '',
-      price: 999
-    },
-    latePledgePrice: 999,
-    files: [],
-    thumbnail: '',
-    tags: []
-  }
-  const nctx = await ctx.replyWithHTML(`Send a <b>link</b>`);
-
-  ctx.session!.messages = {
-    toEdit: nctx.message_id.toString(),
-    chatID: nctx.chat.id.toString()
-  }
+  initProjectAndGroupbuy(ctx);
+  await replyWithCancelButton(ctx, `Send a <b>link</b>`, {additionalButtons: [{text: '🎨 Manual', callbackName: 'manual'}]});
 });
 
 scene.on('text', async (ctx: KickstarterContext) => {
@@ -60,50 +42,112 @@ scene.on('text', async (ctx: KickstarterContext) => {
     return ctx.scene.leave();
   }
 
-  await ctx.telegram.editMessageText(
+
+  await ctx.telegram.deleteMessage(
     parseInt(ctx.session!.messages!.chatID), 
-    parseInt(ctx.session!.messages!.toEdit as string),
-    undefined,
-    `Getting data, standby.`, {
-    parse_mode: "HTML",
-    ...Markup.inlineKeyboard([
-      Markup.button.callback('❌ Cancel', 'cancel')
-    ])
-  });
+    parseInt(ctx.session!.messages!.toDelete as string)
+  );
 
-  const input = { ...defaultKickstarterActor, startUrls: [{ url: link }] };
-  const run = await apifyClient.actor("moJRLRc85AitArpNN").call(input);
+  await replyWithCancelButton(ctx, `Getting data, standby 🕐`, {editable: true});
 
+  const clocks = ['🕐', '🕑', '🕒', '🕓', '🕔', '🕕', '🕖', '🕗', '🕘', '🕙', '🕚', '🕛'];
+  let clockIndex = 1;
+
+  const updateClock = () => {
+    ctx.telegram.editMessageText(
+      parseInt(ctx.session!.messages!.chatID),
+      parseInt(ctx.session!.messages!.toEdit as string),
+      undefined,
+      `Getting data, standby ${clocks[clockIndex]}`
+    );
+    clockIndex = (clockIndex + 1) % clocks.length;
+  };
+
+  const interval = setInterval(updateClock, 2000);
+
+
+  
   try {
-    const { items } = await apifyClient.dataset(run.defaultDatasetId).listItems() as ApifyResponse;
-
-    if (items.length === 0) {
+    const response = await axios.post( 
+      "https://api.zyte.com/v1/extract",
+      {
+        url: link,
+        browserHtml: true,
+        product: true,
+        productOptions: {
+          extractFrom: "browserHtml",
+          ai: true
+        },
+        customAttributes: {
+          creator: {
+            description: "name of the creator",
+            type: "string"
+          },
+          creatorURL: {
+            description: "url to the creator's profile page",
+            type: "string"
+          },
+          mainImage: {
+            description: "url of the main image",
+            type: "string"
+          },
+          pledges: {
+            description: "all available pledges",
+            items: {
+              properties: {
+                name: {
+                  description: "name of the pledge",
+                  type: "string"
+                },
+                price: {
+                  description: "price of the pledge",
+                  type: "number"
+                }
+              },
+              type: "object"
+            },
+            type: "array"
+          },
+          title: {
+            description: "project title",
+            type: "string"
+          },
+          until: {
+            description: "date in format DD-MM-YYYY when the project expires",
+            type: "string"
+          }
+        }
+      },
+      {
+        auth: {
+          username: process.env.ZYTE_API_KEY || ''
+        }
+      }
+    );
+    
+    clearInterval(interval);
+    const data = response.data!.customAttributes!.values;
+    
+    if (!data) {
       return ctx.reply("❌ No data found for this link. Please try another.");
     }
 
-    const kickstarterData: ApifyKickstarterResponse = items[0] as ApifyKickstarterResponse;
-    const transformedData: TransformedKickstarterResponse = {
-      ...kickstarterData,
-      rewards: kickstarterData.rewards.map(pledge => ({
-        name: pledge.name,
-        price: parseInt(pledge.price[0])
-      }))
-    };
-    
-    ctx.session!.project!.url = transformedData.url;
-    ctx.session!.project!.name = transformedData.projectName;
-    ctx.session!.project!.creator = transformedData.creatorName;
-    ctx.session!.project!.allPledges = transformedData.rewards;
+    ctx.session!.project!.url = link;
+    ctx.session!.project!.name = data.title;
+    ctx.session!.project!.creator = data.creator;
+    ctx.session!.project!.allPledges = data.pledges;
 
     return ctx.scene.enter(nextStageName);
 
   } catch (error) {
-    const { message, type, statusCode, clientMethod, path } = error as any;
-    console.log({ message, statusCode, clientMethod, type });
-
+    console.error("Failed to fetch Kickstarter data:", error);
     await ctx.reply("❌ Failed to fetch Kickstarter data. Please try again.");
     return ctx.scene.leave();
   }
+});
+
+scene.action('manual', async (ctx: KickstarterContext) => {
+  return ctx.scene.enter('MANUAL_PROJECT_0_NAME');
 });
 
 scene.action('cancel', async (ctx: KickstarterContext) => {

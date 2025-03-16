@@ -1,8 +1,9 @@
 import fs from 'fs';
 import path from 'path';
 import { TelegramData } from './settings';
-import { CustomContext } from './types/customContext';
+import { CustomContext, KickstarterContext } from './types/customContext';
 import { KeyboardButton } from './types/generalInterfaces';
+import { Markup } from 'telegraf';
 
 function sleep(ms: number) {
   return new Promise(resolve => {
@@ -73,6 +74,44 @@ function isAdmin (telegramUserID: string) :boolean {
 
 function getCommandParameter (messageText: string) :string {
   return messageText.split(/ +/)[1];
+}
+
+export async function updateMessage(ctx: any, newText?: string, newMarkup?: any) {
+  if (!ctx.session?.messages?.chatID) {
+    throw new Error('No chat ID found in session');
+  }
+
+  const chatID = parseInt(ctx.session.messages.chatID);
+
+  // Handle deletion if toDelete exists
+  if (ctx.session.messages.toDelete) {
+    try {
+      await ctx.telegram.deleteMessage(chatID, parseInt(ctx.session.messages.toDelete));
+      ctx.session.messages.toDelete = undefined;
+      return;
+    } catch (error) {
+      console.error('Error deleting message:', error);
+    }
+  }
+
+  // Handle editing if toEdit exists
+  if (ctx.session.messages.toEdit) {
+    try {
+      await ctx.telegram.editMessageText(
+        chatID,
+        parseInt(ctx.session.messages.toEdit),
+        undefined,
+        newText,
+        newMarkup
+      );
+      ctx.session.messages.toEdit = undefined;
+      return;
+    } catch (error) {
+      console.error('Error editing message:', error);
+    }
+  }
+
+  throw new Error('No message to update (neither toDelete nor toEdit found)');
 }
 
 export {

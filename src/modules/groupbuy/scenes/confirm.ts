@@ -37,7 +37,7 @@ ${projectData.selectedPledge ? `${(projectData.selectedPledge as Pledge).name} -
     [Markup.button.callback('Confirm', 'confirm')]
   ]
 
-  if (ctx.session!.messages!.toEdit) {
+  if (ctx.session!.messages?.toEdit) {
     if (ctx.session!.messages!.toEdit.length > 2) {
       await ctx.telegram.editMessageText(
         ctx.session!.messages!.chatID,
@@ -56,6 +56,16 @@ ${projectData.selectedPledge ? `${(projectData.selectedPledge as Pledge).name} -
 
       ctx.session!.messages!.chatID = sentMessage.chat.id.toString();
       ctx.session!.messages!.toEdit = sentMessage.message_id.toString();
+    }
+  } else {
+    const sentMessage = await ctx.replyWithHTML(message, {
+      parse_mode: 'HTML',
+      ...Markup.inlineKeyboard(buttons)
+    })
+
+    ctx.session!.messages = {
+      chatID: sentMessage.chat.id.toString(),
+      toEdit: sentMessage.message_id.toString()
     }
   }
 }

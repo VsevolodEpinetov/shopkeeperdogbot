@@ -10,7 +10,7 @@ interface KeyboardButton {
   callback_data: string;
 }
 
-composer.command('ss', async (ctx) => {
+composer.command(['ss', 'setstatus', 'status', 'cs', 'changestatus'], async (ctx) => {
   if (!isSuperUser(ctx.from!.id.toString())) {
     return;
   }

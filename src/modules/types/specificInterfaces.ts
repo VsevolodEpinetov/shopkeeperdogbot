@@ -14,6 +14,7 @@ interface Project {
     files: string[] | string;
     thumbnail: string;
     tags: string[] | string;
+    id?: number;
 }
 
 interface GroupBuy {
@@ -50,6 +51,15 @@ interface User {
     lastSeenAt: Date;
 }
 
+interface ExpectedPayment {
+    id?: number;
+    telegramGroupID: string;
+    telegramID: string;
+    amount: string;
+    payment_method: string;
+    completed: boolean;
+}
+
 interface ApifyKickstarterResponse {
     url: string;
     projectName: string;
@@ -81,5 +91,6 @@ export {
     User,
     ApifyKickstarterResponse,
     TransformedKickstarterResponse,
-    ApifyResponse
+    ApifyResponse,
+    ExpectedPayment
 }

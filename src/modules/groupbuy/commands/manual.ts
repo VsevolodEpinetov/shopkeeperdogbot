@@ -5,7 +5,7 @@ import db from '../../db/index';
 
 const composer = new Composer<KickstarterContext>();
 
-composer.command(['new', 'n', 'gb'], async (ctx) => {
+composer.command(['manual', 'nm', 'm'], async (ctx) => {
   if (!isSuperUser(ctx.from!.id.toString())) {
     return;
   }
@@ -15,7 +15,7 @@ composer.command(['new', 'n', 'gb'], async (ctx) => {
     return ctx.reply('Groupbuy already exists');
   }
 
-  return ctx.scene.enter('NEW_GROUPBUY_0_LINK');
+  return ctx.scene.enter('MANUAL_PROJECT_0_URL');
 });
 
-export default composer;
+export default composer; 
